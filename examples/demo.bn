@@ -1,0 +1,10 @@
+project "triangle-demo" {
+  stage 480 360 background #f5f7faff
+  sprite "Sprite 1" at -80 0 direction 0 size 26 color #4c97ffff {
+    repeat 4 {
+      move 80
+      turn 90
+      wait 0.15
+    }
+  }
+}
