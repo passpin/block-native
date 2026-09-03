@@ -142,17 +142,30 @@ pub struct Procedure {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Expr {
-    Literal { value: Value },
-    Var { name: String },
+    Literal {
+        value: Value,
+    },
+    Var {
+        name: String,
+    },
     Binary {
         op: BinaryOp,
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    Unary { op: UnaryOp, value: Box<Expr> },
-    Key { key: String },
-    Touching { sprite: String },
-    ListLen { name: String },
+    Unary {
+        op: UnaryOp,
+        value: Box<Expr>,
+    },
+    Key {
+        key: String,
+    },
+    Touching {
+        sprite: String,
+    },
+    ListLen {
+        name: String,
+    },
 }
 
 impl Expr {
@@ -303,9 +316,21 @@ struct SpriteV1 {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum CommandV1 {
-    Move { #[serde(default)] id: String, steps: f32 },
-    Turn { #[serde(default)] id: String, degrees: f32 },
-    Wait { #[serde(default)] id: String, seconds: f32 },
+    Move {
+        #[serde(default)]
+        id: String,
+        steps: f32,
+    },
+    Turn {
+        #[serde(default)]
+        id: String,
+        degrees: f32,
+    },
+    Wait {
+        #[serde(default)]
+        id: String,
+        seconds: f32,
+    },
     Repeat {
         #[serde(default)]
         id: String,

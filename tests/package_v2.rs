@@ -46,8 +46,16 @@ fn package_rejects_unsafe_or_duplicate_asset_names() {
     let duplicate = build_package(
         b"program",
         &[
-            PackedAsset { name: "x".into(), kind: AssetKind::Image, bytes: vec![1] },
-            PackedAsset { name: "x".into(), kind: AssetKind::Sound, bytes: vec![2] },
+            PackedAsset {
+                name: "x".into(),
+                kind: AssetKind::Image,
+                bytes: vec![1],
+            },
+            PackedAsset {
+                name: "x".into(),
+                kind: AssetKind::Sound,
+                bytes: vec![2],
+            },
         ],
     );
     assert!(duplicate.is_err());

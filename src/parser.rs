@@ -13,7 +13,11 @@ pub struct ParseError {
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} at line {}, column {}", self.message, self.line, self.column)
+        write!(
+            f,
+            "{} at line {}, column {}",
+            self.message, self.line, self.column
+        )
     }
 }
 
@@ -58,7 +62,11 @@ pub fn format_project(project: &Project) -> String {
         push_line(
             &mut out,
             1,
-            &format!("global {} = {}", variable.name, format_value(&variable.value)),
+            &format!(
+                "global {} = {}",
+                variable.name,
+                format_value(&variable.value)
+            ),
         );
     }
     for list in &project.lists {
@@ -126,7 +134,11 @@ pub fn format_project(project: &Project) -> String {
             push_line(
                 &mut out,
                 2,
-                &format!("proc {}({}) {{", procedure.name, procedure.params.join(", ")),
+                &format!(
+                    "proc {}({}) {{",
+                    procedure.name,
+                    procedure.params.join(", ")
+                ),
             );
             format_commands(&procedure.body, 3, &mut out);
             push_line(&mut out, 2, "}");
@@ -140,17 +152,38 @@ pub fn format_project(project: &Project) -> String {
 fn format_commands(commands: &[Command], depth: usize, out: &mut String) {
     for command in commands {
         match command {
-            Command::Move { steps, .. } => push_line(out, depth, &format!("move {}", format_expr(steps))),
-            Command::Turn { degrees, .. } => push_line(out, depth, &format!("turn {}", format_expr(degrees))),
-            Command::Wait { seconds, .. } => push_line(out, depth, &format!("wait {}", format_expr(seconds))),
-            Command::Set { name, value, .. } => push_line(out, depth, &format!("set {name} = {}", format_expr(value))),
-            Command::Change { name, delta, .. } => push_line(out, depth, &format!("change {name} by {}", format_expr(delta))),
-            Command::Push { list, value, .. } => push_line(out, depth, &format!("push {} to {list}", format_expr(value))),
-            Command::Broadcast { message, .. } => push_line(out, depth, &format!("broadcast {}", quote(message))),
+            Command::Move { steps, .. } => {
+                push_line(out, depth, &format!("move {}", format_expr(steps)))
+            }
+            Command::Turn { degrees, .. } => {
+                push_line(out, depth, &format!("turn {}", format_expr(degrees)))
+            }
+            Command::Wait { seconds, .. } => {
+                push_line(out, depth, &format!("wait {}", format_expr(seconds)))
+            }
+            Command::Set { name, value, .. } => {
+                push_line(out, depth, &format!("set {name} = {}", format_expr(value)))
+            }
+            Command::Change { name, delta, .. } => push_line(
+                out,
+                depth,
+                &format!("change {name} by {}", format_expr(delta)),
+            ),
+            Command::Push { list, value, .. } => push_line(
+                out,
+                depth,
+                &format!("push {} to {list}", format_expr(value)),
+            ),
+            Command::Broadcast { message, .. } => {
+                push_line(out, depth, &format!("broadcast {}", quote(message)))
+            }
             Command::Call { name, args, .. } => push_line(
                 out,
                 depth,
-                &format!("call {name}({})", args.iter().map(format_expr).collect::<Vec<_>>().join(", ")),
+                &format!(
+                    "call {name}({})",
+                    args.iter().map(format_expr).collect::<Vec<_>>().join(", ")
+                ),
             ),
             Command::PenDown { .. } => push_line(out, depth, "pen down"),
             Command::PenUp { .. } => push_line(out, depth, "pen up"),
@@ -161,12 +194,19 @@ fn format_commands(commands: &[Command], depth: usize, out: &mut String) {
                 format_commands(body, depth + 1, out);
                 push_line(out, depth, "}");
             }
-            Command::While { condition, body, .. } => {
+            Command::While {
+                condition, body, ..
+            } => {
                 push_line(out, depth, &format!("while {} {{", format_expr(condition)));
                 format_commands(body, depth + 1, out);
                 push_line(out, depth, "}");
             }
-            Command::If { condition, then_body, else_body, .. } => {
+            Command::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 push_line(out, depth, &format!("if {} {{", format_expr(condition)));
                 format_commands(then_body, depth + 1, out);
                 if else_body.is_empty() {
@@ -197,7 +237,11 @@ fn format_expr_prec(expr: &Expr, parent_prec: u8) -> String {
                 UnaryOp::Neg => format!("-{}", format_expr_prec(value, 8)),
                 UnaryOp::Not => format!("not {}", format_expr_prec(value, 8)),
             };
-            if 8 < parent_prec { format!("({text})") } else { text }
+            if 8 < parent_prec {
+                format!("({text})")
+            } else {
+                text
+            }
         }
         Expr::Binary { op, left, right } => {
             let (symbol, prec) = match op {
@@ -220,7 +264,11 @@ fn format_expr_prec(expr: &Expr, parent_prec: u8) -> String {
                 format_expr_prec(left, prec),
                 format_expr_prec(right, prec + 1)
             );
-            if prec < parent_prec { format!("({text})") } else { text }
+            if prec < parent_prec {
+                format!("({text})")
+            } else {
+                text
+            }
         }
     }
 }
@@ -234,7 +282,14 @@ fn push_line(out: &mut String, depth: usize, text: &str) {
 }
 
 fn format_list(values: &[Value]) -> String {
-    format!("[{}]", values.iter().map(format_value).collect::<Vec<_>>().join(", "))
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(format_value)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 fn format_value(value: &Value) -> String {
@@ -258,7 +313,10 @@ fn quote(value: &str) -> String {
 }
 
 fn format_color(value: [u8; 4]) -> String {
-    format!("#{:02x}{:02x}{:02x}{:02x}", value[0], value[1], value[2], value[3])
+    format!(
+        "#{:02x}{:02x}{:02x}{:02x}",
+        value[0], value[1], value[2], value[3]
+    )
 }
 
 struct Parser {
@@ -312,7 +370,11 @@ impl Parser {
         Ok(Project {
             version: PROJECT_VERSION,
             name,
-            stage: Stage { width, height, background },
+            stage: Stage {
+                width,
+                height,
+                background,
+            },
             globals,
             lists,
             assets,
@@ -420,14 +482,22 @@ impl Parser {
         self.word("when")?;
         let event = match self.ident()?.as_str() {
             "start" => Event::Start,
-            "key" => Event::Key { key: self.string()? },
-            "message" => Event::Message { message: self.string()? },
+            "key" => Event::Key {
+                key: self.string()?,
+            },
+            "message" => Event::Message {
+                message: self.string()?,
+            },
             _ => return Err(self.error("event must be start, key, or message")),
         };
         self.symbol('{')?;
         let body = self.parse_commands()?;
         self.symbol('}')?;
-        Ok(Script { id: String::new(), event, body })
+        Ok(Script {
+            id: String::new(),
+            event,
+            body,
+        })
     }
 
     fn parse_procedure(&mut self) -> Result<Procedure, ParseError> {
@@ -448,7 +518,12 @@ impl Parser {
         self.symbol('{')?;
         let body = self.parse_commands()?;
         self.symbol('}')?;
-        Ok(Procedure { id: String::new(), name, params, body })
+        Ok(Procedure {
+            id: String::new(),
+            name,
+            params,
+            body,
+        })
     }
 
     fn parse_commands(&mut self) -> Result<Vec<Command>, ParseError> {
@@ -466,18 +541,35 @@ impl Parser {
         let op = self.ident()?;
         let id = String::new();
         match op.as_str() {
-            "move" => Ok(Command::Move { id, steps: self.expr(0)? }),
-            "turn" => Ok(Command::Turn { id, degrees: self.expr(0)? }),
-            "wait" => Ok(Command::Wait { id, seconds: self.expr(0)? }),
+            "move" => Ok(Command::Move {
+                id,
+                steps: self.expr(0)?,
+            }),
+            "turn" => Ok(Command::Turn {
+                id,
+                degrees: self.expr(0)?,
+            }),
+            "wait" => Ok(Command::Wait {
+                id,
+                seconds: self.expr(0)?,
+            }),
             "set" => {
                 let name = self.ident()?;
                 self.op("=")?;
-                Ok(Command::Set { id, name, value: self.expr(0)? })
+                Ok(Command::Set {
+                    id,
+                    name,
+                    value: self.expr(0)?,
+                })
             }
             "change" => {
                 let name = self.ident()?;
                 self.word("by")?;
-                Ok(Command::Change { id, name, delta: self.expr(0)? })
+                Ok(Command::Change {
+                    id,
+                    name,
+                    delta: self.expr(0)?,
+                })
             }
             "push" => {
                 let value = self.expr(0)?;
@@ -485,7 +577,10 @@ impl Parser {
                 let list = self.ident()?;
                 Ok(Command::Push { id, list, value })
             }
-            "broadcast" => Ok(Command::Broadcast { id, message: self.string()? }),
+            "broadcast" => Ok(Command::Broadcast {
+                id,
+                message: self.string()?,
+            }),
             "call" => {
                 let name = self.ident()?;
                 self.symbol('(')?;
@@ -508,7 +603,10 @@ impl Parser {
                 "clear" => Ok(Command::PenClear { id }),
                 _ => Err(self.error("pen command must be down, up, or clear")),
             },
-            "play" => Ok(Command::Play { id, sound: self.string()? }),
+            "play" => Ok(Command::Play {
+                id,
+                sound: self.string()?,
+            }),
             "repeat" => {
                 let times = self.expr(0)?;
                 self.symbol('{')?;
@@ -521,7 +619,11 @@ impl Parser {
                 self.symbol('{')?;
                 let body = self.parse_commands()?;
                 self.symbol('}')?;
-                Ok(Command::While { id, condition, body })
+                Ok(Command::While {
+                    id,
+                    condition,
+                    body,
+                })
             }
             "if" => {
                 let condition = self.expr(0)?;
@@ -537,7 +639,12 @@ impl Parser {
                 } else {
                     Vec::new()
                 };
-                Ok(Command::If { id, condition, then_body, else_body })
+                Ok(Command::If {
+                    id,
+                    condition,
+                    then_body,
+                    else_body,
+                })
             }
             _ => Err(self.error(format!("unknown command '{op}'"))),
         }
@@ -546,13 +653,19 @@ impl Parser {
     fn expr(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
         let mut left = self.prefix()?;
         loop {
-            let Some((op, prec)) = self.binary_op() else { break };
+            let Some((op, prec)) = self.binary_op() else {
+                break;
+            };
             if prec < min_prec {
                 break;
             }
             self.take();
             let right = self.expr(prec + 1)?;
-            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -560,35 +673,55 @@ impl Parser {
     fn prefix(&mut self) -> Result<Expr, ParseError> {
         if self.peek_word() == Some("not") {
             self.take();
-            return Ok(Expr::Unary { op: UnaryOp::Not, value: Box::new(self.expr(8)?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Not,
+                value: Box::new(self.expr(8)?),
+            });
         }
         if self.is_op("-") {
             self.take();
-            return Ok(Expr::Unary { op: UnaryOp::Neg, value: Box::new(self.expr(8)?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Neg,
+                value: Box::new(self.expr(8)?),
+            });
         }
         match self.current().kind.clone() {
             TokenKind::Number(value) => {
                 self.take();
-                Ok(Expr::Literal { value: Value::Number(value) })
+                Ok(Expr::Literal {
+                    value: Value::Number(value),
+                })
             }
             TokenKind::String(value) => {
                 self.take();
-                Ok(Expr::Literal { value: Value::String(value) })
+                Ok(Expr::Literal {
+                    value: Value::String(value),
+                })
             }
             TokenKind::Word(ref value) if value == "true" || value == "false" => {
                 let value = value == "true";
                 self.take();
-                Ok(Expr::Literal { value: Value::Bool(value) })
+                Ok(Expr::Literal {
+                    value: Value::Bool(value),
+                })
             }
             TokenKind::Word(name) => {
                 self.take();
                 if self.is_symbol('(') {
                     self.take();
                     let result = match name.as_str() {
-                        "key" => Expr::Key { key: self.string()? },
-                        "touching" => Expr::Touching { sprite: self.string()? },
-                        "len" => Expr::ListLen { name: self.ident()? },
-                        _ => return Err(self.error(format!("unknown expression function '{name}'"))),
+                        "key" => Expr::Key {
+                            key: self.string()?,
+                        },
+                        "touching" => Expr::Touching {
+                            sprite: self.string()?,
+                        },
+                        "len" => Expr::ListLen {
+                            name: self.ident()?,
+                        },
+                        _ => {
+                            return Err(self.error(format!("unknown expression function '{name}'")))
+                        }
                     };
                     self.symbol(')')?;
                     Ok(result)
@@ -627,8 +760,14 @@ impl Parser {
 
     fn literal(&mut self) -> Result<Value, ParseError> {
         match self.current().kind.clone() {
-            TokenKind::Number(value) => { self.take(); Ok(Value::Number(value)) }
-            TokenKind::String(value) => { self.take(); Ok(Value::String(value)) }
+            TokenKind::Number(value) => {
+                self.take();
+                Ok(Value::Number(value))
+            }
+            TokenKind::String(value) => {
+                self.take();
+                Ok(Value::String(value))
+            }
             TokenKind::Word(value) if value == "true" || value == "false" => {
                 self.take();
                 Ok(Value::Bool(value == "true"))
@@ -677,7 +816,11 @@ impl Parser {
         let token = self.take();
         match token.kind {
             TokenKind::Word(value) if value == expected => Ok(()),
-            _ => Err(ParseError { message: format!("expected '{expected}'"), line: token.line, column: token.column }),
+            _ => Err(ParseError {
+                message: format!("expected '{expected}'"),
+                line: token.line,
+                column: token.column,
+            }),
         }
     }
 
@@ -685,7 +828,11 @@ impl Parser {
         let token = self.take();
         match token.kind {
             TokenKind::Symbol(value) if value == expected => Ok(()),
-            _ => Err(ParseError { message: format!("expected '{expected}'"), line: token.line, column: token.column }),
+            _ => Err(ParseError {
+                message: format!("expected '{expected}'"),
+                line: token.line,
+                column: token.column,
+            }),
         }
     }
 
@@ -693,21 +840,58 @@ impl Parser {
         let token = self.take();
         match token.kind {
             TokenKind::Op(value) if value == expected => Ok(()),
-            _ => Err(ParseError { message: format!("expected '{expected}'"), line: token.line, column: token.column }),
+            _ => Err(ParseError {
+                message: format!("expected '{expected}'"),
+                line: token.line,
+                column: token.column,
+            }),
         }
     }
 
     fn eof(&mut self) -> Result<(), ParseError> {
-        if matches!(self.current().kind, TokenKind::Eof) { Ok(()) } else { Err(self.error("expected end of source")) }
+        if matches!(self.current().kind, TokenKind::Eof) {
+            Ok(())
+        } else {
+            Err(self.error("expected end of source"))
+        }
     }
 
-    fn current(&self) -> &Token { &self.tokens[self.index] }
-    fn take(&mut self) -> Token { let token = self.tokens[self.index].clone(); self.index += 1; token }
-    fn peek_word(&self) -> Option<&str> { if let TokenKind::Word(value) = &self.current().kind { Some(value) } else { None } }
-    fn is_symbol(&self, value: char) -> bool { matches!(self.current().kind, TokenKind::Symbol(found) if found == value) }
-    fn is_op(&self, value: &str) -> bool { matches!(&self.current().kind, TokenKind::Op(found) if found == value) }
-    fn error(&self, message: impl Into<String>) -> ParseError { ParseError { message: message.into(), line: self.current().line, column: self.current().column } }
-    fn error_prev(&self, message: impl Into<String>) -> ParseError { let index = self.index.saturating_sub(1); ParseError { message: message.into(), line: self.tokens[index].line, column: self.tokens[index].column } }
+    fn current(&self) -> &Token {
+        &self.tokens[self.index]
+    }
+    fn take(&mut self) -> Token {
+        let token = self.tokens[self.index].clone();
+        self.index += 1;
+        token
+    }
+    fn peek_word(&self) -> Option<&str> {
+        if let TokenKind::Word(value) = &self.current().kind {
+            Some(value)
+        } else {
+            None
+        }
+    }
+    fn is_symbol(&self, value: char) -> bool {
+        matches!(self.current().kind, TokenKind::Symbol(found) if found == value)
+    }
+    fn is_op(&self, value: &str) -> bool {
+        matches!(&self.current().kind, TokenKind::Op(found) if found == value)
+    }
+    fn error(&self, message: impl Into<String>) -> ParseError {
+        ParseError {
+            message: message.into(),
+            line: self.current().line,
+            column: self.current().column,
+        }
+    }
+    fn error_prev(&self, message: impl Into<String>) -> ParseError {
+        let index = self.index.saturating_sub(1);
+        ParseError {
+            message: message.into(),
+            line: self.tokens[index].line,
+            column: self.tokens[index].column,
+        }
+    }
 }
 
 fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
@@ -723,13 +907,19 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             continue;
         }
         if ch == '/' && chars.get(i + 1) == Some(&'/') {
-            while i < chars.len() && chars[i] != '\n' { advance(chars[i], &mut i, &mut line, &mut column); }
+            while i < chars.len() && chars[i] != '\n' {
+                advance(chars[i], &mut i, &mut line, &mut column);
+            }
             continue;
         }
         let start_line = line;
         let start_column = column;
         if "{}()[],".contains(ch) {
-            tokens.push(Token { kind: TokenKind::Symbol(ch), line, column });
+            tokens.push(Token {
+                kind: TokenKind::Symbol(ch),
+                line,
+                column,
+            });
             advance(ch, &mut i, &mut line, &mut column);
             continue;
         }
@@ -740,48 +930,108 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             while i < chars.len() {
                 let current = chars[i];
                 advance(current, &mut i, &mut line, &mut column);
-                if !escaped && current == '"' { break; }
+                if !escaped && current == '"' {
+                    break;
+                }
                 escaped = !escaped && current == '\\';
-                if current != '\\' { escaped = false; }
+                if current != '\\' {
+                    escaped = false;
+                }
             }
             if chars.get(i.saturating_sub(1)) != Some(&'"') {
-                return Err(ParseError { message: "unterminated string".into(), line: start_line, column: start_column });
+                return Err(ParseError {
+                    message: "unterminated string".into(),
+                    line: start_line,
+                    column: start_column,
+                });
             }
             let raw: String = chars[start..i].iter().collect();
-            let value: String = serde_json::from_str(&raw).map_err(|_| ParseError { message: "invalid string literal".into(), line: start_line, column: start_column })?;
-            tokens.push(Token { kind: TokenKind::String(value), line: start_line, column: start_column });
+            let value: String = serde_json::from_str(&raw).map_err(|_| ParseError {
+                message: "invalid string literal".into(),
+                line: start_line,
+                column: start_column,
+            })?;
+            tokens.push(Token {
+                kind: TokenKind::String(value),
+                line: start_line,
+                column: start_column,
+            });
             continue;
         }
         if ch == '#' {
             advance(ch, &mut i, &mut line, &mut column);
             let start = i;
-            while i < chars.len() && chars[i].is_ascii_hexdigit() { advance(chars[i], &mut i, &mut line, &mut column); }
+            while i < chars.len() && chars[i].is_ascii_hexdigit() {
+                advance(chars[i], &mut i, &mut line, &mut column);
+            }
             let hex: String = chars[start..i].iter().collect();
             if hex.len() != 6 && hex.len() != 8 {
-                return Err(ParseError { message: "expected #RRGGBB or #RRGGBBAA".into(), line: start_line, column: start_column });
+                return Err(ParseError {
+                    message: "expected #RRGGBB or #RRGGBBAA".into(),
+                    line: start_line,
+                    column: start_column,
+                });
             }
-            let full = if hex.len() == 6 { format!("{hex}ff") } else { hex };
+            let full = if hex.len() == 6 {
+                format!("{hex}ff")
+            } else {
+                hex
+            };
             let mut rgba = [0u8; 4];
-            for idx in 0..4 { rgba[idx] = u8::from_str_radix(&full[idx * 2..idx * 2 + 2], 16).unwrap(); }
-            tokens.push(Token { kind: TokenKind::Color(rgba), line: start_line, column: start_column });
+            for idx in 0..4 {
+                rgba[idx] = u8::from_str_radix(&full[idx * 2..idx * 2 + 2], 16).unwrap();
+            }
+            tokens.push(Token {
+                kind: TokenKind::Color(rgba),
+                line: start_line,
+                column: start_column,
+            });
             continue;
         }
-        if ch.is_ascii_digit() || (ch == '.' && chars.get(i + 1).is_some_and(char::is_ascii_digit)) {
+        if ch.is_ascii_digit() || (ch == '.' && chars.get(i + 1).is_some_and(char::is_ascii_digit))
+        {
             let start = i;
-            while i < chars.len() && (chars[i].is_ascii_digit() || matches!(chars[i], '.' | 'e' | 'E' | '+' | '-')) {
-                if i > start && (chars[i] == '+' || chars[i] == '-') && !matches!(chars[i - 1], 'e' | 'E') { break; }
+            while i < chars.len()
+                && (chars[i].is_ascii_digit() || matches!(chars[i], '.' | 'e' | 'E' | '+' | '-'))
+            {
+                if i > start
+                    && (chars[i] == '+' || chars[i] == '-')
+                    && !matches!(chars[i - 1], 'e' | 'E')
+                {
+                    break;
+                }
                 advance(chars[i], &mut i, &mut line, &mut column);
             }
             let raw: String = chars[start..i].iter().collect();
-            let value = raw.parse::<f64>().map_err(|_| ParseError { message: "invalid number".into(), line: start_line, column: start_column })?;
-            if !value.is_finite() { return Err(ParseError { message: "number must be finite".into(), line: start_line, column: start_column }); }
-            tokens.push(Token { kind: TokenKind::Number(value), line: start_line, column: start_column });
+            let value = raw.parse::<f64>().map_err(|_| ParseError {
+                message: "invalid number".into(),
+                line: start_line,
+                column: start_column,
+            })?;
+            if !value.is_finite() {
+                return Err(ParseError {
+                    message: "number must be finite".into(),
+                    line: start_line,
+                    column: start_column,
+                });
+            }
+            tokens.push(Token {
+                kind: TokenKind::Number(value),
+                line: start_line,
+                column: start_column,
+            });
             continue;
         }
         if ch.is_ascii_alphabetic() || ch == '_' {
             let start = i;
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') { advance(chars[i], &mut i, &mut line, &mut column); }
-            tokens.push(Token { kind: TokenKind::Word(chars[start..i].iter().collect()), line: start_line, column: start_column });
+            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                advance(chars[i], &mut i, &mut line, &mut column);
+            }
+            tokens.push(Token {
+                kind: TokenKind::Word(chars[start..i].iter().collect()),
+                line: start_line,
+                column: start_column,
+            });
             continue;
         }
         if "+-*/%<>=!".contains(ch) {
@@ -791,16 +1041,33 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
                 value.push('=');
                 advance('=', &mut i, &mut line, &mut column);
             }
-            tokens.push(Token { kind: TokenKind::Op(value), line: start_line, column: start_column });
+            tokens.push(Token {
+                kind: TokenKind::Op(value),
+                line: start_line,
+                column: start_column,
+            });
             continue;
         }
-        return Err(ParseError { message: format!("unexpected character {ch:?}"), line: start_line, column: start_column });
+        return Err(ParseError {
+            message: format!("unexpected character {ch:?}"),
+            line: start_line,
+            column: start_column,
+        });
     }
-    tokens.push(Token { kind: TokenKind::Eof, line, column });
+    tokens.push(Token {
+        kind: TokenKind::Eof,
+        line,
+        column,
+    });
     Ok(tokens)
 }
 
 fn advance(ch: char, index: &mut usize, line: &mut usize, column: &mut usize) {
     *index += 1;
-    if ch == '\n' { *line += 1; *column = 1; } else { *column += 1; }
+    if ch == '\n' {
+        *line += 1;
+        *column = 1;
+    } else {
+        *column += 1;
+    }
 }

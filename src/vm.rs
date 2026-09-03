@@ -581,11 +581,19 @@ fn eval_binary(op: BinaryOp, left: Value, right: Value) -> Value {
         BinaryOp::Mul => Value::Number(as_number(&left) * as_number(&right)),
         BinaryOp::Div => {
             let divisor = as_number(&right);
-            Value::Number(if divisor == 0.0 { 0.0 } else { as_number(&left) / divisor })
+            Value::Number(if divisor == 0.0 {
+                0.0
+            } else {
+                as_number(&left) / divisor
+            })
         }
         BinaryOp::Mod => {
             let divisor = as_number(&right);
-            Value::Number(if divisor == 0.0 { 0.0 } else { as_number(&left) % divisor })
+            Value::Number(if divisor == 0.0 {
+                0.0
+            } else {
+                as_number(&left) % divisor
+            })
         }
         BinaryOp::Eq => Value::Bool(left == right),
         BinaryOp::Ne => Value::Bool(left != right),

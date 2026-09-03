@@ -70,10 +70,21 @@ fn parses_v2_project_with_events_state_procedures_and_assets() {
     let Command::Move { steps, .. } = &body[0] else {
         panic!("expected move");
     };
-    let Expr::Binary { op: BinaryOp::Add, left, .. } = steps else {
+    let Expr::Binary {
+        op: BinaryOp::Add,
+        left,
+        ..
+    } = steps
+    else {
         panic!("expected addition at root");
     };
-    assert!(matches!(left.as_ref(), Expr::Binary { op: BinaryOp::Mul, .. }));
+    assert!(matches!(
+        left.as_ref(),
+        Expr::Binary {
+            op: BinaryOp::Mul,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -109,7 +120,10 @@ fn version_one_json_upgrades_single_script_to_start_event() {
     assert_eq!(project.version, PROJECT_VERSION);
     assert_eq!(project.sprites[0].scripts.len(), 1);
     assert!(matches!(project.sprites[0].scripts[0].event, Event::Start));
-    assert!(matches!(project.sprites[0].scripts[0].body[0], Command::Move { .. }));
+    assert!(matches!(
+        project.sprites[0].scripts[0].body[0],
+        Command::Move { .. }
+    ));
 }
 
 #[test]

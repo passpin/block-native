@@ -1,5 +1,6 @@
 use crate::model::{
-    Asset, Command, Event, Expr, ListDecl, Procedure, Project, Stage, Value, Variable, PROJECT_VERSION,
+    Asset, Command, Event, Expr, ListDecl, Procedure, Project, Stage, Value, Variable,
+    PROJECT_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -58,25 +59,53 @@ pub struct CompiledProcedure {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Instruction {
-    Move { value: Expr },
-    Turn { value: Expr },
-    Wait { value: Expr },
-    Repeat { times: Expr, body: Vec<Instruction> },
-    While { condition: Expr, body: Vec<Instruction> },
+    Move {
+        value: Expr,
+    },
+    Turn {
+        value: Expr,
+    },
+    Wait {
+        value: Expr,
+    },
+    Repeat {
+        times: Expr,
+        body: Vec<Instruction>,
+    },
+    While {
+        condition: Expr,
+        body: Vec<Instruction>,
+    },
     If {
         condition: Expr,
         then_body: Vec<Instruction>,
         else_body: Vec<Instruction>,
     },
-    Set { name: String, value: Expr },
-    Change { name: String, delta: Expr },
-    Push { list: String, value: Expr },
-    Broadcast { message: String },
-    Call { name: String, args: Vec<Expr> },
+    Set {
+        name: String,
+        value: Expr,
+    },
+    Change {
+        name: String,
+        delta: Expr,
+    },
+    Push {
+        list: String,
+        value: Expr,
+    },
+    Broadcast {
+        message: String,
+    },
+    Call {
+        name: String,
+        args: Vec<Expr>,
+    },
     PenDown,
     PenUp,
     PenClear,
-    Play { sound: String },
+    Play {
+        sound: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -105,7 +134,12 @@ pub fn compile(project: &Project) -> Result<Vec<u8>, BytecodeError> {
                     .scripts
                     .iter()
                     .map(|script| count_commands(&script.body))
-                    .chain(sprite.procedures.iter().map(|proc_| count_commands(&proc_.body)))
+                    .chain(
+                        sprite
+                            .procedures
+                            .iter()
+                            .map(|proc_| count_commands(&proc_.body)),
+                    )
                     .try_fold(0usize, |total, next| {
                         total
                             .checked_add(next?)
@@ -144,8 +178,9 @@ pub fn compile(project: &Project) -> Result<Vec<u8>, BytecodeError> {
             .collect::<Result<Vec<_>, BytecodeError>>()?,
     };
 
-    let payload = serde_json::to_vec(&program)
-        .map_err(|error| BytecodeError::InvalidProject(format!("cannot serialize program: {error}")))?;
+    let payload = serde_json::to_vec(&program).map_err(|error| {
+        BytecodeError::InvalidProject(format!("cannot serialize program: {error}"))
+    })?;
     let payload_len = u32::try_from(payload.len())
         .map_err(|_| BytecodeError::InvalidProject("compiled program is too large".into()))?;
     let mut out = Vec::with_capacity(10 + payload.len());
@@ -166,7 +201,9 @@ pub fn decode(bytes: &[u8]) -> Result<Program, BytecodeError> {
 
 fn decode_v2(bytes: &[u8]) -> Result<Program, BytecodeError> {
     if bytes.len() < 10 {
-        return Err(BytecodeError::InvalidBytecode("truncated BLK2 header".into()));
+        return Err(BytecodeError::InvalidBytecode(
+            "truncated BLK2 header".into(),
+        ));
     }
     let version = u16::from_le_bytes(bytes[4..6].try_into().unwrap());
     if version != BYTECODE_VERSION {
@@ -199,7 +236,9 @@ fn compile_commands(commands: &[Command]) -> Vec<Instruction> {
     commands
         .iter()
         .map(|command| match command {
-            Command::Move { steps, .. } => Instruction::Move { value: steps.clone() },
+            Command::Move { steps, .. } => Instruction::Move {
+                value: steps.clone(),
+            },
             Command::Turn { degrees, .. } => Instruction::Turn {
                 value: degrees.clone(),
             },
@@ -210,7 +249,9 @@ fn compile_commands(commands: &[Command]) -> Vec<Instruction> {
                 times: times.clone(),
                 body: compile_commands(body),
             },
-            Command::While { condition, body, .. } => Instruction::While {
+            Command::While {
+                condition, body, ..
+            } => Instruction::While {
                 condition: condition.clone(),
                 body: compile_commands(body),
             },
