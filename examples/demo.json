@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "triangle-demo",
+  "stage": { "width": 480, "height": 360, "background": [245, 247, 250, 255] },
+  "sprites": [{
+    "id": "sprite_demo",
+    "name": "Sprite 1",
+    "x": -80,
+    "y": 0,
+    "direction": 0,
+    "size": 26,
+    "color": [76, 151, 255, 255],
+    "script": [{
+      "id": "repeat_demo",
+      "op": "repeat",
+      "times": 4,
+      "body": [
+        { "id": "move_demo", "op": "move", "steps": 80 },
+        { "id": "turn_demo", "op": "turn", "degrees": 90 },
+        { "id": "wait_demo", "op": "wait", "seconds": 0.15 }
+      ]
+    }]
+  }]
+}
