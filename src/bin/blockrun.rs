@@ -198,13 +198,7 @@ fn draw_runtime(runtime: &Runtime, textures: &HashMap<String, Texture2D>) {
                 },
             );
         } else {
-            draw_directional_triangle(
-                x,
-                y,
-                sprite.size,
-                sprite.direction,
-                rgba(sprite.color),
-            );
+            draw_directional_triangle(x, y, sprite.size, sprite.direction, rgba(sprite.color));
         }
     }
 
