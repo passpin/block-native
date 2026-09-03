@@ -25,21 +25,23 @@ fn demo_project_json() -> &'static str {
 }
 
 #[test]
-fn compiler_round_trips_project_and_expands_repeat() {
-    let project: Project = serde_json::from_str(demo_project_json()).unwrap();
+fn version_one_project_upgrades_and_compiles_to_blk2() {
+    let project = Project::from_json_str(demo_project_json()).unwrap();
     assert_eq!(project.sprites[0].id, "sprite_1");
-    let bytes = bytecode::compile(&project).unwrap();
-    let program = bytecode::decode(&bytes).unwrap();
+    assert_eq!(project.sprites[0].scripts.len(), 1);
 
+    let bytes = bytecode::compile(&project).unwrap();
+    assert_eq!(&bytes[..4], b"BLK2");
+    let program = bytecode::decode(&bytes).unwrap();
     assert_eq!(program.name, "demo");
     assert_eq!(program.stage.width, 480);
     assert_eq!(program.sprites.len(), 1);
-    assert_eq!(program.sprites[0].instructions.len(), 5);
+    assert_eq!(program.sprites[0].scripts.len(), 1);
 }
 
 #[test]
-fn runtime_executes_motion_turn_and_wait_incrementally() {
-    let project: Project = serde_json::from_str(demo_project_json()).unwrap();
+fn runtime_executes_legacy_motion_turn_and_wait_incrementally() {
+    let project = Project::from_json_str(demo_project_json()).unwrap();
     let bytes = bytecode::compile(&project).unwrap();
     let program = bytecode::decode(&bytes).unwrap();
     let mut runtime = Runtime::new(program);
@@ -55,21 +57,4 @@ fn runtime_executes_motion_turn_and_wait_incrementally() {
     assert!(!runtime.is_finished());
     runtime.update(0.25);
     assert!(runtime.is_finished());
-}
-
-#[test]
-fn compiler_rejects_runaway_expansion() {
-    let json = r#"{
-      "version": 1,
-      "name": "too-big",
-      "stage": {"width": 480, "height": 360, "background": [0,0,0,255]},
-      "sprites": [{
-        "name": "Sprite",
-        "x": 0.0, "y": 0.0, "direction": 0.0, "size": 20.0,
-        "color": [255,255,255,255],
-        "script": [{"op":"repeat","times":1000001,"body":[{"op":"move","steps":1.0}]}]
-      }]
-    }"#;
-    let project: Project = serde_json::from_str(json).unwrap();
-    assert!(bytecode::compile(&project).is_err());
 }
