@@ -1,0 +1,56 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: JavaScript syntax check
+        run: node --check editor/app.js
+      - name: Editor language tests
+        run: node --test editor/language.test.mjs
+      - name: Install Linux graphics dependencies
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Test
+        run: cargo test --all-targets
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: block-native-linux
+            suffix: ""
+          - os: windows-latest
+            artifact: block-native-windows
+            suffix: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binaries
+        run: cargo build --release --bins
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            target/release/blockc${{ matrix.suffix }}
+            target/release/blockrun${{ matrix.suffix }}
+          if-no-files-found: error
