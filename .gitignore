@@ -1,0 +1,4 @@
+/target/
+*.bcode
+.DS_Store
+Thumbs.db
