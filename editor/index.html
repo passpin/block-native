@@ -10,13 +10,13 @@
   <header>
     <div>
       <h1>Block Native</h1>
-      <p>One program, two editors: keyboard-first blocks and text code.</p>
+      <p>Keyboard-first blocks and text code over the same project AST.</p>
     </div>
     <div class="toolbar">
       <label class="button secondary">Import JSON<input id="importFile" type="file" accept="application/json,.json" hidden></label>
       <label class="button secondary">Import Code<input id="importCodeFile" type="file" accept="text/plain,.bn,.txt" hidden></label>
       <button id="exportButton">Download JSON</button>
-      <button id="exportCodeButton" class="secondary">Download Code</button>
+      <button id="exportCodeButton" class="secondary">Download .bn</button>
       <button id="resetButton" class="secondary">Reset demo</button>
     </div>
   </header>
@@ -25,16 +25,14 @@
     <button class="mode selected" data-mode="blocks">Blocks</button>
     <button class="mode" data-mode="code">Code</button>
     <button class="mode" data-mode="split">Split</button>
-    <span class="hint">↑↓ siblings · ← parent · → child · Enter insert · Shift+Enter inside repeat · Alt+↑↓ move · Delete remove · Ctrl+Space palette</span>
+    <span class="hint">↑↓ siblings · ← parent · → child · Enter insert after · Shift+Enter insert inside · Ctrl+Shift+Space else · Alt+↑↓ move · Delete remove · Ctrl+Space palette</span>
   </nav>
 
   <main>
-    <aside class="panel palette-panel">
-      <h2>Blocks</h2>
-      <button class="palette motion" data-op="move">move 10</button>
-      <button class="palette motion" data-op="turn">turn 15°</button>
-      <button class="palette control" data-op="wait">wait 0.2s</button>
-      <button class="palette control" data-op="repeat">repeat 10</button>
+    <aside class="panel left-panel">
+      <h2>Insert</h2>
+      <div id="quickPalette" class="quick-palette"></div>
+
       <h2>Project</h2>
       <label>Name<input id="projectName" type="text"></label>
       <div class="two-col">
@@ -42,26 +40,59 @@
         <label>Height<input id="stageHeight" type="number" min="1" max="65535"></label>
       </div>
       <label>Background<input id="stageBackground" type="color"></label>
+
+      <section class="mini-section">
+        <div class="section-head"><h3>Globals</h3><button id="addGlobal" class="small secondary">+ var</button></div>
+        <div id="globalsEditor" class="row-editor"></div>
+      </section>
+      <section class="mini-section">
+        <div class="section-head"><h3>Global lists</h3><button id="addGlobalList" class="small secondary">+ list</button></div>
+        <div id="globalListsEditor" class="row-editor"></div>
+      </section>
+      <section class="mini-section">
+        <div class="section-head"><h3>Assets</h3><button id="addAsset" class="small secondary">+ asset</button></div>
+        <div id="assetsEditor" class="row-editor"></div>
+        <p class="microcopy">Paths are resolved relative to the .bn/.json file by blockc when building .bnp.</p>
+      </section>
     </aside>
 
     <section class="editor-area">
       <section id="blockPane" class="panel workspace-panel">
-        <div class="workspace-head"><div><h2>Blocks</h2><span id="selectedSpriteLabel"></span></div><button id="clearScript" class="danger ghost">Clear script</button></div>
-        <div id="script" class="script" aria-label="Block script"></div>
+        <div class="workspace-head">
+          <div><h2>Blocks</h2><span id="selectedSpriteLabel"></span></div>
+          <div class="toolbar compact">
+            <button id="addStartScript" class="small">+ start</button>
+            <button id="addKeyScript" class="small secondary">+ key</button>
+            <button id="addMessageScript" class="small secondary">+ message</button>
+            <button id="addProcedure" class="small secondary">+ proc</button>
+          </div>
+        </div>
+        <div id="programBlocks" class="script" aria-label="Block program"></div>
       </section>
+
       <section id="codePane" class="panel code-panel" hidden>
-        <div class="workspace-head"><div><h2>Code</h2><span id="codeStatus" class="code-status">valid</span></div><button id="formatCode" class="secondary small">Format</button></div>
+        <div class="workspace-head">
+          <div><h2>Code</h2><span id="codeStatus" class="code-status">valid</span></div>
+          <button id="formatCode" class="secondary small">Format</button>
+        </div>
         <textarea id="codeEditor" spellcheck="false" aria-label="Project source code"></textarea>
         <pre id="codeError" class="code-error" hidden></pre>
       </section>
     </section>
 
     <aside class="right-column">
-      <section class="panel stage-panel"><h2>Stage</h2><canvas id="stage" width="480" height="360"></canvas></section>
+      <section class="panel stage-panel">
+        <h2>Stage</h2>
+        <canvas id="stage" width="480" height="360"></canvas>
+        <p class="microcopy">The browser preview shows initial transforms. Runtime events, costumes, sound and pen execute in blockrun.</p>
+      </section>
+
       <section class="panel sprite-panel">
         <div class="workspace-head"><h2>Sprites</h2><button id="addSprite" class="small">+ Sprite</button></div>
-        <div id="spriteList" class="sprite-list"></div><div id="spriteEditor" class="sprite-editor"></div>
+        <div id="spriteList" class="sprite-list"></div>
+        <div id="spriteEditor" class="sprite-editor"></div>
       </section>
+
       <details class="panel json-panel"><summary>JSON preview</summary><pre id="jsonPreview"></pre></details>
     </aside>
   </main>
@@ -69,19 +100,12 @@
   <dialog id="commandPalette" class="command-palette">
     <form method="dialog" onsubmit="return false">
       <label for="commandSearch">Insert block</label>
-      <input id="commandSearch" type="text" autocomplete="off" placeholder="move, turn, wait, repeat…" />
+      <input id="commandSearch" type="text" autocomplete="off" placeholder="move, if, variable, broadcast, pen…" />
       <div id="commandResults" class="command-results" role="listbox"></div>
       <div class="palette-help">Enter inserts · ↑↓ chooses · Esc closes</div>
     </form>
   </dialog>
 
-  <template id="blockTemplate">
-    <article class="block" tabindex="0">
-      <div class="block-row"><strong class="block-title"></strong><div class="block-actions"><button data-action="up">↑</button><button data-action="down">↓</button><button data-action="delete">×</button></div></div>
-      <div class="block-fields"></div>
-      <div class="repeat-body" hidden><div class="repeat-label">inside repeat</div><div class="repeat-commands"></div></div>
-    </article>
-  </template>
   <script type="module" src="app.js"></script>
 </body>
 </html>
