@@ -1,40 +1,89 @@
-use crate::model::{Command, Project, Stage, PROJECT_VERSION};
+use crate::model::{
+    Asset, Command, Event, Expr, ListDecl, Procedure, Project, Stage, Value, Variable, PROJECT_VERSION,
+};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const MAGIC: &[u8; 4] = b"BLK1";
-const BYTECODE_VERSION: u16 = 1;
+const MAGIC_V1: &[u8; 4] = b"BLK1";
+const MAGIC_V2: &[u8; 4] = b"BLK2";
+const BYTECODE_VERSION: u16 = 2;
 pub const MAX_INSTRUCTIONS_PER_SPRITE: usize = 1_000_000;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Program {
     pub name: String,
     pub stage: Stage,
+    #[serde(default)]
+    pub globals: Vec<Variable>,
+    #[serde(default)]
+    pub lists: Vec<ListDecl>,
+    #[serde(default)]
+    pub assets: Vec<Asset>,
     pub sprites: Vec<CompiledSprite>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompiledSprite {
+    pub id: String,
     pub name: String,
     pub x: f32,
     pub y: f32,
     pub direction: f32,
     pub size: f32,
     pub color: [u8; 4],
+    pub costume: Option<String>,
+    #[serde(default)]
+    pub variables: Vec<Variable>,
+    #[serde(default)]
+    pub lists: Vec<ListDecl>,
+    #[serde(default)]
+    pub scripts: Vec<CompiledScript>,
+    #[serde(default)]
+    pub procedures: Vec<CompiledProcedure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CompiledScript {
+    pub event: Event,
     pub instructions: Vec<Instruction>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CompiledProcedure {
+    pub name: String,
+    pub params: Vec<String>,
+    pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "op", rename_all = "snake_case")]
 pub enum Instruction {
-    Move(f32),
-    Turn(f32),
-    Wait(f32),
+    Move { value: Expr },
+    Turn { value: Expr },
+    Wait { value: Expr },
+    Repeat { times: Expr, body: Vec<Instruction> },
+    While { condition: Expr, body: Vec<Instruction> },
+    If {
+        condition: Expr,
+        then_body: Vec<Instruction>,
+        else_body: Vec<Instruction>,
+    },
+    Set { name: String, value: Expr },
+    Change { name: String, delta: Expr },
+    Push { list: String, value: Expr },
+    Broadcast { message: String },
+    Call { name: String, args: Vec<Expr> },
+    PenDown,
+    PenUp,
+    PenClear,
+    Play { sound: String },
 }
 
 #[derive(Debug, Error)]
 pub enum BytecodeError {
     #[error("invalid project: {0}")]
     InvalidProject(String),
-    #[error("script expands beyond {MAX_INSTRUCTIONS_PER_SPRITE} instructions")]
+    #[error("script contains more than {MAX_INSTRUCTIONS_PER_SPRITE} instructions")]
     ExpansionLimit,
     #[error("invalid bytecode: {0}")]
     InvalidBytecode(String),
@@ -42,159 +91,166 @@ pub enum BytecodeError {
 
 pub fn compile(project: &Project) -> Result<Vec<u8>, BytecodeError> {
     validate_project(project)?;
-
-    let mut out = Vec::new();
-    out.extend_from_slice(MAGIC);
-    push_u16(&mut out, BYTECODE_VERSION);
-    push_string(&mut out, &project.name)?;
-    push_u16(&mut out, project.stage.width);
-    push_u16(&mut out, project.stage.height);
-    out.extend_from_slice(&project.stage.background);
-
-    let sprite_count = u16::try_from(project.sprites.len())
-        .map_err(|_| BytecodeError::InvalidProject("too many sprites".into()))?;
-    push_u16(&mut out, sprite_count);
-
-    for sprite in &project.sprites {
-        let instruction_count = count_commands(&sprite.script)?;
-        if instruction_count > MAX_INSTRUCTIONS_PER_SPRITE {
-            return Err(BytecodeError::ExpansionLimit);
-        }
-
-        let mut instructions = Vec::with_capacity(instruction_count);
-        flatten_commands(&sprite.script, &mut instructions);
-
-        push_string(&mut out, &sprite.name)?;
-        push_f32(&mut out, sprite.x);
-        push_f32(&mut out, sprite.y);
-        push_f32(&mut out, sprite.direction);
-        push_f32(&mut out, sprite.size);
-        out.extend_from_slice(&sprite.color);
-        push_u32(&mut out, instructions.len() as u32);
-
-        for instruction in instructions {
-            match instruction {
-                Instruction::Move(value) => {
-                    out.push(1);
-                    push_f32(&mut out, value);
+    let program = Program {
+        name: project.name.clone(),
+        stage: project.stage.clone(),
+        globals: project.globals.clone(),
+        lists: project.lists.clone(),
+        assets: project.assets.clone(),
+        sprites: project
+            .sprites
+            .iter()
+            .map(|sprite| {
+                let count = sprite
+                    .scripts
+                    .iter()
+                    .map(|script| count_commands(&script.body))
+                    .chain(sprite.procedures.iter().map(|proc_| count_commands(&proc_.body)))
+                    .try_fold(0usize, |total, next| {
+                        total
+                            .checked_add(next?)
+                            .filter(|value| *value <= MAX_INSTRUCTIONS_PER_SPRITE)
+                            .ok_or(BytecodeError::ExpansionLimit)
+                    })?;
+                if count > MAX_INSTRUCTIONS_PER_SPRITE {
+                    return Err(BytecodeError::ExpansionLimit);
                 }
-                Instruction::Turn(value) => {
-                    out.push(2);
-                    push_f32(&mut out, value);
-                }
-                Instruction::Wait(value) => {
-                    out.push(3);
-                    push_f32(&mut out, value);
-                }
-            }
-        }
-    }
+                Ok(CompiledSprite {
+                    id: sprite.id.clone(),
+                    name: sprite.name.clone(),
+                    x: sprite.x,
+                    y: sprite.y,
+                    direction: sprite.direction,
+                    size: sprite.size,
+                    color: sprite.color,
+                    costume: sprite.costume.clone(),
+                    variables: sprite.variables.clone(),
+                    lists: sprite.lists.clone(),
+                    scripts: sprite
+                        .scripts
+                        .iter()
+                        .map(|script| CompiledScript {
+                            event: script.event.clone(),
+                            instructions: compile_commands(&script.body),
+                        })
+                        .collect(),
+                    procedures: sprite
+                        .procedures
+                        .iter()
+                        .map(|proc_| compile_procedure(proc_))
+                        .collect(),
+                })
+            })
+            .collect::<Result<Vec<_>, BytecodeError>>()?,
+    };
 
+    let payload = serde_json::to_vec(&program)
+        .map_err(|error| BytecodeError::InvalidProject(format!("cannot serialize program: {error}")))?;
+    let payload_len = u32::try_from(payload.len())
+        .map_err(|_| BytecodeError::InvalidProject("compiled program is too large".into()))?;
+    let mut out = Vec::with_capacity(10 + payload.len());
+    out.extend_from_slice(MAGIC_V2);
+    out.extend_from_slice(&BYTECODE_VERSION.to_le_bytes());
+    out.extend_from_slice(&payload_len.to_le_bytes());
+    out.extend_from_slice(&payload);
     Ok(out)
 }
 
 pub fn decode(bytes: &[u8]) -> Result<Program, BytecodeError> {
-    let mut reader = Reader::new(bytes);
-    if reader.take(4)? != MAGIC {
-        return Err(BytecodeError::InvalidBytecode("bad magic".into()));
+    match bytes.get(..4) {
+        Some(magic) if magic == MAGIC_V2 => decode_v2(bytes),
+        Some(magic) if magic == MAGIC_V1 => decode_v1(bytes),
+        _ => Err(BytecodeError::InvalidBytecode("bad magic".into())),
     }
+}
 
-    let version = reader.u16()?;
+fn decode_v2(bytes: &[u8]) -> Result<Program, BytecodeError> {
+    if bytes.len() < 10 {
+        return Err(BytecodeError::InvalidBytecode("truncated BLK2 header".into()));
+    }
+    let version = u16::from_le_bytes(bytes[4..6].try_into().unwrap());
     if version != BYTECODE_VERSION {
         return Err(BytecodeError::InvalidBytecode(format!(
-            "unsupported bytecode version {version}"
+            "unsupported BLK2 version {version}"
         )));
     }
-
-    let name = reader.string()?;
-    let width = reader.u16()?;
-    let height = reader.u16()?;
-    if width == 0 || height == 0 {
+    let len = u32::from_le_bytes(bytes[6..10].try_into().unwrap()) as usize;
+    let payload = bytes
+        .get(10..10 + len)
+        .ok_or_else(|| BytecodeError::InvalidBytecode("truncated BLK2 payload".into()))?;
+    if bytes.len() != 10 + len {
         return Err(BytecodeError::InvalidBytecode(
-            "stage dimensions must be positive".into(),
+            "trailing bytes after BLK2 payload".into(),
         ));
     }
-    let background = reader.rgba()?;
-    let sprite_count = reader.u16()? as usize;
-    let mut sprites = Vec::with_capacity(sprite_count);
+    serde_json::from_slice(payload)
+        .map_err(|error| BytecodeError::InvalidBytecode(format!("invalid BLK2 payload: {error}")))
+}
 
-    for _ in 0..sprite_count {
-        let sprite_name = reader.string()?;
-        let x = reader.f32()?;
-        let y = reader.f32()?;
-        let direction = reader.f32()?;
-        let size = reader.f32()?;
-        if !x.is_finite() || !y.is_finite() || !direction.is_finite() || !size.is_finite() {
-            return Err(BytecodeError::InvalidBytecode(
-                "sprite contains non-finite numeric state".into(),
-            ));
-        }
-        if size <= 0.0 {
-            return Err(BytecodeError::InvalidBytecode(
-                "sprite size must be positive".into(),
-            ));
-        }
-        let color = reader.rgba()?;
-        let instruction_count = reader.u32()? as usize;
-        if instruction_count > MAX_INSTRUCTIONS_PER_SPRITE {
-            return Err(BytecodeError::InvalidBytecode(
-                "instruction count exceeds runtime limit".into(),
-            ));
-        }
-
-        let mut instructions = Vec::with_capacity(instruction_count);
-        for _ in 0..instruction_count {
-            let opcode = reader.u8()?;
-            let value = reader.f32()?;
-            if !value.is_finite() {
-                return Err(BytecodeError::InvalidBytecode(
-                    "instruction contains non-finite value".into(),
-                ));
-            }
-            let instruction = match opcode {
-                1 => Instruction::Move(value),
-                2 => Instruction::Turn(value),
-                3 if value >= 0.0 => Instruction::Wait(value),
-                3 => {
-                    return Err(BytecodeError::InvalidBytecode(
-                        "wait duration cannot be negative".into(),
-                    ))
-                }
-                other => {
-                    return Err(BytecodeError::InvalidBytecode(format!(
-                        "unknown opcode {other}"
-                    )))
-                }
-            };
-            instructions.push(instruction);
-        }
-
-        sprites.push(CompiledSprite {
-            name: sprite_name,
-            x,
-            y,
-            direction,
-            size,
-            color,
-            instructions,
-        });
+fn compile_procedure(procedure: &Procedure) -> CompiledProcedure {
+    CompiledProcedure {
+        name: procedure.name.clone(),
+        params: procedure.params.clone(),
+        instructions: compile_commands(&procedure.body),
     }
+}
 
-    if !reader.is_finished() {
-        return Err(BytecodeError::InvalidBytecode(
-            "trailing bytes after program".into(),
-        ));
-    }
-
-    Ok(Program {
-        name,
-        stage: Stage {
-            width,
-            height,
-            background,
-        },
-        sprites,
-    })
+fn compile_commands(commands: &[Command]) -> Vec<Instruction> {
+    commands
+        .iter()
+        .map(|command| match command {
+            Command::Move { steps, .. } => Instruction::Move { value: steps.clone() },
+            Command::Turn { degrees, .. } => Instruction::Turn {
+                value: degrees.clone(),
+            },
+            Command::Wait { seconds, .. } => Instruction::Wait {
+                value: seconds.clone(),
+            },
+            Command::Repeat { times, body, .. } => Instruction::Repeat {
+                times: times.clone(),
+                body: compile_commands(body),
+            },
+            Command::While { condition, body, .. } => Instruction::While {
+                condition: condition.clone(),
+                body: compile_commands(body),
+            },
+            Command::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => Instruction::If {
+                condition: condition.clone(),
+                then_body: compile_commands(then_body),
+                else_body: compile_commands(else_body),
+            },
+            Command::Set { name, value, .. } => Instruction::Set {
+                name: name.clone(),
+                value: value.clone(),
+            },
+            Command::Change { name, delta, .. } => Instruction::Change {
+                name: name.clone(),
+                delta: delta.clone(),
+            },
+            Command::Push { list, value, .. } => Instruction::Push {
+                list: list.clone(),
+                value: value.clone(),
+            },
+            Command::Broadcast { message, .. } => Instruction::Broadcast {
+                message: message.clone(),
+            },
+            Command::Call { name, args, .. } => Instruction::Call {
+                name: name.clone(),
+                args: args.clone(),
+            },
+            Command::PenDown { .. } => Instruction::PenDown,
+            Command::PenUp { .. } => Instruction::PenUp,
+            Command::PenClear { .. } => Instruction::PenClear,
+            Command::Play { sound, .. } => Instruction::Play {
+                sound: sound.clone(),
+            },
+        })
+        .collect()
 }
 
 fn validate_project(project: &Project) -> Result<(), BytecodeError> {
@@ -214,10 +270,6 @@ fn validate_project(project: &Project) -> Result<(), BytecodeError> {
             "stage dimensions must be positive".into(),
         ));
     }
-    if project.sprites.len() > u16::MAX as usize {
-        return Err(BytecodeError::InvalidProject("too many sprites".into()));
-    }
-
     for sprite in &project.sprites {
         if sprite.name.trim().is_empty() {
             return Err(BytecodeError::InvalidProject(
@@ -228,106 +280,201 @@ fn validate_project(project: &Project) -> Result<(), BytecodeError> {
             || !sprite.y.is_finite()
             || !sprite.direction.is_finite()
             || !sprite.size.is_finite()
+            || sprite.size <= 0.0
         {
             return Err(BytecodeError::InvalidProject(format!(
-                "sprite '{}' contains a non-finite numeric value",
+                "sprite '{}' has invalid transform data",
                 sprite.name
             )));
         }
-        if sprite.size <= 0.0 {
-            return Err(BytecodeError::InvalidProject(format!(
-                "sprite '{}' size must be positive",
-                sprite.name
-            )));
+        for script in &sprite.scripts {
+            validate_commands(&script.body)?;
         }
-        validate_commands(&sprite.script, &sprite.name)?;
+        for procedure in &sprite.procedures {
+            validate_commands(&procedure.body)?;
+        }
     }
-
     Ok(())
 }
 
-fn validate_commands(commands: &[Command], sprite_name: &str) -> Result<(), BytecodeError> {
+fn validate_commands(commands: &[Command]) -> Result<(), BytecodeError> {
     for command in commands {
         match command {
-            Command::Move { steps, .. } if !steps.is_finite() => {
-                return Err(non_finite_command(sprite_name))
+            Command::Move { steps, .. } => validate_expr(steps)?,
+            Command::Turn { degrees, .. } => validate_expr(degrees)?,
+            Command::Wait { seconds, .. } => validate_expr(seconds)?,
+            Command::Repeat { times, body, .. } => {
+                validate_expr(times)?;
+                validate_commands(body)?;
             }
-            Command::Turn { degrees, .. } if !degrees.is_finite() => {
-                return Err(non_finite_command(sprite_name))
+            Command::While {
+                condition, body, ..
+            } => {
+                validate_expr(condition)?;
+                validate_commands(body)?;
             }
-            Command::Wait { seconds, .. } if !seconds.is_finite() || *seconds < 0.0 => {
-                return Err(BytecodeError::InvalidProject(format!(
-                    "sprite '{sprite_name}' has an invalid wait duration"
-                )))
+            Command::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
+                validate_expr(condition)?;
+                validate_commands(then_body)?;
+                validate_commands(else_body)?;
             }
-            Command::Repeat { body, .. } => validate_commands(body, sprite_name)?,
-            _ => {}
+            Command::Set { value, .. } => validate_expr(value)?,
+            Command::Change { delta, .. } => validate_expr(delta)?,
+            Command::Push { value, .. } => validate_expr(value)?,
+            Command::Call { args, .. } => {
+                for arg in args {
+                    validate_expr(arg)?;
+                }
+            }
+            Command::Broadcast { .. }
+            | Command::PenDown { .. }
+            | Command::PenUp { .. }
+            | Command::PenClear { .. }
+            | Command::Play { .. } => {}
         }
     }
     Ok(())
 }
 
-fn non_finite_command(sprite_name: &str) -> BytecodeError {
-    BytecodeError::InvalidProject(format!(
-        "sprite '{sprite_name}' has a non-finite command value"
-    ))
+fn validate_expr(expr: &Expr) -> Result<(), BytecodeError> {
+    match expr {
+        Expr::Literal {
+            value: Value::Number(value),
+        } if !value.is_finite() => Err(BytecodeError::InvalidProject(
+            "expression contains non-finite number".into(),
+        )),
+        Expr::Binary { left, right, .. } => {
+            validate_expr(left)?;
+            validate_expr(right)
+        }
+        Expr::Unary { value, .. } => validate_expr(value),
+        _ => Ok(()),
+    }
 }
 
 fn count_commands(commands: &[Command]) -> Result<usize, BytecodeError> {
     let mut total = 0usize;
     for command in commands {
-        let add = match command {
-            Command::Move { .. } | Command::Turn { .. } | Command::Wait { .. } => 1,
-            Command::Repeat { times, body, .. } => {
-                let inner = count_commands(body)?;
-                inner
-                    .checked_mul(*times as usize)
-                    .ok_or(BytecodeError::ExpansionLimit)?
-            }
+        let nested = match command {
+            Command::Repeat { body, .. } | Command::While { body, .. } => count_commands(body)?,
+            Command::If {
+                then_body,
+                else_body,
+                ..
+            } => count_commands(then_body)?
+                .checked_add(count_commands(else_body)?)
+                .ok_or(BytecodeError::ExpansionLimit)?,
+            _ => 0,
         };
         total = total
-            .checked_add(add)
+            .checked_add(1 + nested)
+            .filter(|value| *value <= MAX_INSTRUCTIONS_PER_SPRITE)
             .ok_or(BytecodeError::ExpansionLimit)?;
-        if total > MAX_INSTRUCTIONS_PER_SPRITE {
-            return Err(BytecodeError::ExpansionLimit);
-        }
     }
     Ok(total)
 }
 
-fn flatten_commands(commands: &[Command], out: &mut Vec<Instruction>) {
-    for command in commands {
-        match command {
-            Command::Move { steps, .. } => out.push(Instruction::Move(*steps)),
-            Command::Turn { degrees, .. } => out.push(Instruction::Turn(*degrees)),
-            Command::Wait { seconds, .. } => out.push(Instruction::Wait(*seconds)),
-            Command::Repeat { times, body, .. } => {
-                for _ in 0..*times {
-                    flatten_commands(body, out);
-                }
-            }
-        }
+fn decode_v1(bytes: &[u8]) -> Result<Program, BytecodeError> {
+    let mut reader = Reader::new(bytes);
+    if reader.take(4)? != MAGIC_V1 {
+        return Err(BytecodeError::InvalidBytecode("bad BLK1 magic".into()));
     }
-}
-
-fn push_u16(out: &mut Vec<u8>, value: u16) {
-    out.extend_from_slice(&value.to_le_bytes());
-}
-
-fn push_u32(out: &mut Vec<u8>, value: u32) {
-    out.extend_from_slice(&value.to_le_bytes());
-}
-
-fn push_f32(out: &mut Vec<u8>, value: f32) {
-    out.extend_from_slice(&value.to_le_bytes());
-}
-
-fn push_string(out: &mut Vec<u8>, value: &str) -> Result<(), BytecodeError> {
-    let len = u16::try_from(value.len())
-        .map_err(|_| BytecodeError::InvalidProject("name is too long".into()))?;
-    push_u16(out, len);
-    out.extend_from_slice(value.as_bytes());
-    Ok(())
+    let version = reader.u16()?;
+    if version != 1 {
+        return Err(BytecodeError::InvalidBytecode(format!(
+            "unsupported BLK1 version {version}"
+        )));
+    }
+    let name = reader.string()?;
+    let width = reader.u16()?;
+    let height = reader.u16()?;
+    let background = reader.rgba()?;
+    let sprite_count = reader.u16()? as usize;
+    let mut sprites = Vec::with_capacity(sprite_count);
+    for _ in 0..sprite_count {
+        let sprite_name = reader.string()?;
+        let x = reader.f32()?;
+        let y = reader.f32()?;
+        let direction = reader.f32()?;
+        let size = reader.f32()?;
+        let color = reader.rgba()?;
+        let instruction_count = reader.u32()? as usize;
+        if instruction_count > MAX_INSTRUCTIONS_PER_SPRITE {
+            return Err(BytecodeError::InvalidBytecode(
+                "BLK1 instruction count exceeds runtime limit".into(),
+            ));
+        }
+        let mut instructions = Vec::with_capacity(instruction_count);
+        for _ in 0..instruction_count {
+            let opcode = reader.u8()?;
+            let value = reader.f32()?;
+            if !value.is_finite() {
+                return Err(BytecodeError::InvalidBytecode(
+                    "BLK1 instruction contains non-finite value".into(),
+                ));
+            }
+            instructions.push(match opcode {
+                1 => Instruction::Move {
+                    value: Expr::number(value as f64),
+                },
+                2 => Instruction::Turn {
+                    value: Expr::number(value as f64),
+                },
+                3 if value >= 0.0 => Instruction::Wait {
+                    value: Expr::number(value as f64),
+                },
+                3 => {
+                    return Err(BytecodeError::InvalidBytecode(
+                        "BLK1 wait duration cannot be negative".into(),
+                    ))
+                }
+                other => {
+                    return Err(BytecodeError::InvalidBytecode(format!(
+                        "unknown BLK1 opcode {other}"
+                    )))
+                }
+            });
+        }
+        sprites.push(CompiledSprite {
+            id: String::new(),
+            name: sprite_name,
+            x,
+            y,
+            direction,
+            size,
+            color,
+            costume: None,
+            variables: Vec::new(),
+            lists: Vec::new(),
+            scripts: vec![CompiledScript {
+                event: Event::Start,
+                instructions,
+            }],
+            procedures: Vec::new(),
+        });
+    }
+    if !reader.is_finished() {
+        return Err(BytecodeError::InvalidBytecode(
+            "trailing bytes after BLK1 program".into(),
+        ));
+    }
+    Ok(Program {
+        name,
+        stage: Stage {
+            width,
+            height,
+            background,
+        },
+        globals: Vec::new(),
+        lists: Vec::new(),
+        assets: Vec::new(),
+        sprites,
+    })
 }
 
 struct Reader<'a> {
@@ -358,18 +505,15 @@ impl<'a> Reader<'a> {
     }
 
     fn u16(&mut self) -> Result<u16, BytecodeError> {
-        let bytes: [u8; 2] = self.take(2)?.try_into().unwrap();
-        Ok(u16::from_le_bytes(bytes))
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
     }
 
     fn u32(&mut self) -> Result<u32, BytecodeError> {
-        let bytes: [u8; 4] = self.take(4)?.try_into().unwrap();
-        Ok(u32::from_le_bytes(bytes))
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
     }
 
     fn f32(&mut self) -> Result<f32, BytecodeError> {
-        let bytes: [u8; 4] = self.take(4)?.try_into().unwrap();
-        Ok(f32::from_le_bytes(bytes))
+        Ok(f32::from_le_bytes(self.take(4)?.try_into().unwrap()))
     }
 
     fn rgba(&mut self) -> Result<[u8; 4], BytecodeError> {
@@ -378,8 +522,7 @@ impl<'a> Reader<'a> {
 
     fn string(&mut self) -> Result<String, BytecodeError> {
         let len = self.u16()? as usize;
-        let bytes = self.take(len)?;
-        String::from_utf8(bytes.to_vec())
+        String::from_utf8(self.take(len)?.to_vec())
             .map_err(|_| BytecodeError::InvalidBytecode("invalid UTF-8 string".into()))
     }
 
