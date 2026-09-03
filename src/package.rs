@@ -173,9 +173,7 @@ fn validate_asset_name(name: &str) -> Result<(), PackageError> {
         || name.contains("..")
         || name.chars().any(char::is_control)
     {
-        return Err(PackageError::Invalid(format!(
-            "unsafe asset name '{name}'"
-        )));
+        return Err(PackageError::Invalid(format!("unsafe asset name '{name}'")));
     }
     Ok(())
 }

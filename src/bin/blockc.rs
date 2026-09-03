@@ -35,7 +35,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let source = fs::read_to_string(&input)?;
     let project = match input.extension().and_then(|value| value.to_str()) {
         Some(extension) if extension.eq_ignore_ascii_case("bn") => parser::parse_project(&source)?,
-        Some(extension) if extension.eq_ignore_ascii_case("json") => Project::from_json_str(&source)?,
+        Some(extension) if extension.eq_ignore_ascii_case("json") => {
+            Project::from_json_str(&source)?
+        }
         _ => return Err("input extension must be .json or .bn".into()),
     };
 
